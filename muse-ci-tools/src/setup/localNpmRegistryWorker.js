@@ -14,12 +14,12 @@ const startNpmRegistry = async () => {
   // set fake token to allow annonymous npm publish to the local npm registry
   const npmrcPath = path.join(os.homedir(), '.npmrc');
   fs.ensureFileSync(npmrcPath);
-  const line = `//localhost:${config.LOCAL_NPM_REGISTRY_PORT}/:_authToken=fakeToken`;
+  const line = `//localhost:${config.TARGET_NPM_REGISTRY_PORT}/:_authToken=fakeToken`;
   const content = await fs.readFile(npmrcPath, 'utf8');
   if (!content.includes(line)) {
     await fs.appendFile(
       npmrcPath,
-      `\n//localhost:${config.LOCAL_NPM_REGISTRY_PORT}/:_authToken=fakeToken\n`,
+      `\n//localhost:${config.TARGET_NPM_REGISTRY_PORT}/:_authToken=fakeToken\n`,
     );
   }
 
@@ -40,20 +40,17 @@ const startNpmRegistry = async () => {
       },
     },
     packages: {
-      // '@ebay/nice-*': {
-      //   access: '$anonymous',
-      //   proxy: 'npmjs',
-      // },
-      // '@ebay/*': {
-      //   access: '$anonymous',
-      //   publish: '$anonymous',
-      //   unpublish: '$anonymous',
-      //   proxy: 'npmjs',
-      // },
-      '**': {
+      '@ebay/nice-*': {
+        access: '$anonymous',
+        proxy: 'npmjs',
+      },
+      '@ebay/*': {
         access: '$anonymous',
         publish: '$anonymous',
         unpublish: '$anonymous',
+      },
+      '**': {
+        access: '$anonymous',
         proxy: 'npmjs',
       },
     },
@@ -70,7 +67,7 @@ const startNpmRegistry = async () => {
 
   await new Promise((resolve, reject) => {
     try {
-      serverInstance = app.listen(config.LOCAL_NPM_REGISTRY_PORT, () => {
+      serverInstance = app.listen(config.TARGET_NPM_REGISTRY_PORT, () => {
         log('npm registry started');
 
         resolve();

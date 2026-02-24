@@ -16,9 +16,11 @@ const buildPlugin = async (dir) => {
   const pkgJsonPath = path.join(dir, 'package.json');
   const pkgJson = fs.readJsonSync(pkgJsonPath);
 
-  Object.entries(localPackages).forEach(([name, version]) => {
-    _.set(pkgJson, `pnpm.overrides.${name}`, version);
-  });
+  if (config.IS_TESTING) {
+    Object.entries(localPackages).forEach(([name, version]) => {
+      _.set(pkgJson, `pnpm.overrides.${name}`, version);
+    });
+  }
 
   fs.writeJsonSync(pkgJsonPath, pkgJson, { spaces: 2 });
 
@@ -26,7 +28,7 @@ const buildPlugin = async (dir) => {
     fs.removeSync(path.join(dir, 'pnpm-lock.yaml'));
   }
 
-  await $`cd ${dir} && pnpm install --registry=${config.LOCAL_NPM_REGISTRY}`;
+  await $`cd ${dir} && pnpm install --registry=${config.TARGET_NPM_REGISTRY}`;
   await $`cd ${dir} && pnpm build`;
 
   if (pkgJson.scripts['build:dev']) {

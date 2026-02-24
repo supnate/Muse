@@ -9,7 +9,7 @@ import * as config from '../config.js';
 import { startNpmRegistry, stopNpmRegistry } from './localNpmRegistry.js';
 import publishPackages from './publishPackages.js';
 import buildAndPublishUiPlugins from './buildAndPublishUiPlugins.js';
-import cloneMuseRepo from './cloneMuseRepo.js';
+// import cloneMuseRepo from './cloneMuseRepo.js';
 
 const log = debug('muse:setup');
 
@@ -32,10 +32,10 @@ const setup = async () => {
 
   // For verification test, just use all public published packages to run all tests
   await startNpmRegistry();
-  await stopNpmRegistry();
+  // await stopNpmRegistry();
 
   // await cloneMuseRepo();
-  return;
+  // return;
 
   if (!config.isFlagEnabled('VERIFICATION_TEST')) {
     // await cloneMuseRepo();
@@ -45,12 +45,12 @@ const setup = async () => {
 
   // Install Muse CLI
   log('installing muse-cli');
-  await $`npm i -g @ebay/muse-cli --registry=${config.LOCAL_NPM_REGISTRY}`;
+  await $`npm i -g @ebay/muse-cli --registry=${config.TARGET_NPM_REGISTRY}`;
   await $`muse -v`;
   log('muse-cli installed');
 
   log('init muse');
-  await $`muse init --registry=${config.LOCAL_NPM_REGISTRY}`;
+  await $`muse init --registry=${config.TARGET_NPM_REGISTRY}`;
   log('init muse done');
 
   await stopNpmRegistry();

@@ -5,9 +5,10 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "build": "docker build -t muse-ci-tools .",
+    "publish:ui-plugins": "node ./scripts/buildAndPublishUiPlugins.js",
     "docker:run": "node ./scripts/runTestsLocally.js",
-    "test:docer": "pnpm build & pnpm docker:run",
+    "docker:demo": "node ./scripts/demo.js",
+    "run:demo": "node src/demo.js",
     "start-local-registry": "node ./scripts/startLocalRegistry.js",
     "test:local": "pnpm i && pnpm test",
     "test": "node src/index.js"

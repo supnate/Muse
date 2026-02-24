@@ -19,7 +19,7 @@ const log = debug('muse:build-ui-plugins');
 //   }
 //   await $`cd ${dir}`;
 
-//   await $`cd ${dir} && pnpm install --registry=${config.LOCAL_NPM_REGISTRY}`;
+//   await $`cd ${dir} && pnpm install --registry=${config.TARGET_NPM_REGISTRY}`;
 //   await $`cd ${dir} && pnpm build`;
 
 //   if (pkgJson.scripts['build:dev']) {
@@ -29,7 +29,7 @@ const log = debug('muse:build-ui-plugins');
 //     await $`cd ${dir} && pnpm run build:test`;
 //   }
 
-//   await $`cd ${dir} && pnpm publish --no-git-check --force --registry=${config.LOCAL_NPM_REGISTRY}`;
+//   await $`cd ${dir} && pnpm publish --no-git-check --force --registry=${config.TARGET_NPM_REGISTRY}`;
 // };
 
 const buildAndPublishUiPlugins = async () => {
@@ -47,9 +47,9 @@ const buildAndPublishUiPlugins = async () => {
     const pkgJsonPath = path.join(dir, 'package.json');
     const pkgJson = fs.readJsonSync(pkgJsonPath);
 
-    log('checking if package exists in registry', pkgJson.name);
-    if (await pkgExistsInRegistry(pkgJson.name)) {
-      log('package already exists in registry', pkgJson.name);
+    log('checking if package exists in registry', pkgJson.name, pkgJson.version);
+    if (await pkgExistsInRegistry(pkgJson.name, { version: pkgJson.version })) {
+      log('package already exists in registry', pkgJson.name, '@', pkgJson.version);
       log('skip the build');
       continue;
     }

@@ -95,11 +95,13 @@ export function getMuseModule(filePath) {
   const museModule = findMuseModule(museModuleId, { modules: allMuseModules });
   if (museModule) {
     museModule.__isESM =
+      !!rootPkg.module ||
       rootPkg.type === 'module' ||
       filePath.endsWith('.mjs') ||
       filePath.endsWith('.ts') ||
       filePath.endsWith('.tsx');
   }
+  if (museModuleId.includes('nice')) console.log('museModuleId', museModuleId, museModule.__isESM);
   return museModule;
 }
 

@@ -1,12 +1,11 @@
 import fs from 'fs';
-import { transformWithEsbuild } from 'vite';
+import { transformWithOxc } from 'vite';
 import path from 'path';
 import muse from '@ebay/muse-core';
 import setupMuseDevServer from '@ebay/muse-dev-utils/lib/setupMuseDevServer.js';
 import devUtils from '@ebay/muse-dev-utils/lib/utils.js';
-import museEsbuildPlugin from './museEsbuildPlugin.js';
-import museRollupPlugin from './museRollupPlugin.js';
-import { getMuseModuleCode, mergeObjects, getMuseModule, setViteMode } from './utils.js';
+import museRolldownPlugin from './museRolldownPlugin.js';
+import { mergeObjects, setViteMode } from './utils.js';
 
 // We need to use originalUrl instead of url because the latter is modified by Vite 5+ (not modified in Vite 4)
 // which causes server.middlewares.use(path, middleware) to not work as expected
@@ -25,7 +24,6 @@ const buildDir = {
 };
 export default function museVitePlugin() {
   let theViteServer;
-  let config;
   const musePluginVite = {
     name: 'muse-plugin-vite',
     museMiddleware: {
@@ -109,26 +107,22 @@ export default function museVitePlugin() {
         },
         optimizeDeps: {
           needsInterop: [],
-          esbuildOptions: {
-            plugins: !config.optimizeDeps?.esbuildOptions?.plugins?.find(
-              (p) => p.name === 'muse-esbuild',
-            )
-              ? [museEsbuildPlugin()]
-              : [],
+          rolldownOptions: {
+            plugins: [museRolldownPlugin()],
           },
         },
         build: {
           sourcemap: true,
           outDir: buildDir[config.mode || 'production'],
-          rollupOptions: {
+          rolldownOptions: {
             input: entryFile,
             output: {
               entryFileNames: pkgJson.muse.type === 'boot' ? 'boot.js' : 'main.js',
               format: 'es',
             },
-            plugins: !config.build?.rollupOptions?.plugins?.find((p) => p.name === 'muse-rollup')
-              ? [museRollupPlugin()]
-              : [],
+            // plugins: !config.build?.rollupOptions?.plugins?.find((p) => p.name === 'muse-rollup')
+            //   ? [museRolldownPlugin()]
+            //   : [],
           },
         },
       };
@@ -138,10 +132,11 @@ export default function museVitePlugin() {
       mergeObjects(config, configToBeMerged);
     },
 
-    configResolved(resolvedConfig) {
-      // store the resolved config
-      config = resolvedConfig;
-    },
+    // configResolved(resolvedConfig) {
+    //   // store the resolved config
+    //   config = resolvedConfig;
+    //   // console.log('Muse Vite Plugin config resolved with mode:', resolvedConfig);
+    // },
     configureServer(server) {
       theViteServer = server;
       try {
@@ -161,20 +156,22 @@ export default function museVitePlugin() {
       };
     },
     load(id) {
+      return museRolldownPlugin().load(id);
       // Load hook is only used for dev server
       // For build, it uses rollup plugin to load Muse shared modules.
-      if (config.command !== 'serve' || process.env.VITEST) return;
+      // if (config.command !== 'serve' || process.env.VITEST) return;
       // If pre-bundling is disabled, or if the module is from a dev time lib plugin
       // then we need this hook to find possible Muse shared module
-      const museModule = getMuseModule(id);
+      // console.log('Vite load hook called with id:', id);
+      // const museModule = getMuseModule(id);
 
-      if (!museModule) return;
-      const museCode = getMuseModuleCode(museModule, 'esm');
+      // if (!museModule) return;
+      // const museCode = getMuseModuleCode(museModule, 'esm');
 
-      if (museCode) {
-        return museCode;
-      }
-      return null;
+      // if (museCode) {
+      //   return museCode;
+      // }
+      // return null;
     },
   };
 
@@ -189,7 +186,7 @@ export default function museVitePlugin() {
         libPlugins.some((p) => id.startsWith(`${p.path}/src/`)) &&
         (id.endsWith('.js') || id.endsWith('.jsx') || id.endsWith('.ts') || id.endsWith('.tsx'))
       ) {
-        return transformWithEsbuild(code, id, {
+        return transformWithOxc(code, id, {
           loader: 'jsx',
           jsx: 'automatic',
         });

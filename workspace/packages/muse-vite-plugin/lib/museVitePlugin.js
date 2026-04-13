@@ -1,5 +1,4 @@
 import fs from 'fs';
-import { transformWithOxc } from 'vite';
 import path from 'path';
 import muse from '@ebay/muse-core';
 import setupMuseDevServer from '@ebay/muse-dev-utils/lib/setupMuseDevServer.js';
@@ -24,6 +23,8 @@ const buildDir = {
 };
 export default function museVitePlugin() {
   let theViteServer;
+  // Shared rolldown plugin instance used by both the dev server load hook and the build pipeline.
+  // const devServerRolldownPlugin = museRolldownPlugin();
   const musePluginVite = {
     name: 'muse-plugin-vite',
     museMiddleware: {
@@ -54,6 +55,7 @@ export default function museVitePlugin() {
     process.env.SSL_KEY_FILE ||
     path.join(process.cwd(), './node_modules/.muse/certs/muse-dev-cert.key');
 
+  const rolldownPluginInstance = museRolldownPlugin();
   const vitePlugin = {
     name: 'muse-vite-plugin',
     config(config, { command, mode }) {
@@ -105,24 +107,26 @@ export default function museVitePlugin() {
               key: fs.readFileSync(sslKeyFile),
             },
         },
+        plugins: [rolldownPluginInstance],
         optimizeDeps: {
           needsInterop: [],
+          force: true,
           rolldownOptions: {
-            plugins: [museRolldownPlugin()],
+            plugins: [rolldownPluginInstance],
           },
         },
         build: {
+          minify: false,
           sourcemap: true,
           outDir: buildDir[config.mode || 'production'],
           rolldownOptions: {
             input: entryFile,
+            treeshake: false,
             output: {
               entryFileNames: pkgJson.muse.type === 'boot' ? 'boot.js' : 'main.js',
               format: 'es',
             },
-            // plugins: !config.build?.rollupOptions?.plugins?.find((p) => p.name === 'muse-rollup')
-            //   ? [museRolldownPlugin()]
-            //   : [],
+            // plugins: [rolldownPluginInstance],
           },
         },
       };
@@ -132,13 +136,11 @@ export default function museVitePlugin() {
       mergeObjects(config, configToBeMerged);
     },
 
-    // configResolved(resolvedConfig) {
-    //   // store the resolved config
-    //   config = resolvedConfig;
-    //   // console.log('Muse Vite Plugin config resolved with mode:', resolvedConfig);
-    // },
     configureServer(server) {
       theViteServer = server;
+      // getDepsInServeMode(server, devUtils.getEntryFile()).then((deps) => {
+      //   // musePluginVite.museMiddleware.app.devDeps = deps;
+      // });
       try {
         // when hot reload, vite will call configureServer again, so don't repeat muse plugin registration
         muse.plugin.register(musePluginVite);
@@ -155,43 +157,40 @@ export default function museVitePlugin() {
         });
       };
     },
-    load(id) {
-      return museRolldownPlugin().load(id);
-      // Load hook is only used for dev server
-      // For build, it uses rollup plugin to load Muse shared modules.
-      // if (config.command !== 'serve' || process.env.VITEST) return;
-      // If pre-bundling is disabled, or if the module is from a dev time lib plugin
-      // then we need this hook to find possible Muse shared module
-      // console.log('Vite load hook called with id:', id);
-      // const museModule = getMuseModule(id);
 
-      // if (!museModule) return;
-      // const museCode = getMuseModuleCode(museModule, 'esm');
+    // generateBundle(options, bundle) {
+    //   console.log('generateBundle in vite plugin');
+    // },
 
-      // if (museCode) {
-      //   return museCode;
-      // }
-      // return null;
-    },
+    // resolveId(id) {
+    //   return rolldownPluginInstance.resolveId(id);
+    // },
+
+    // load(id) {
+    //   if (
+    //     id.startsWith('/muse-assets/') ||
+    //     id.startsWith('/@') ||
+    //     id.includes('node_modules/vite/dist')
+    //   ) {
+    //     return;
+    //   }
+    //   console.log('load', id);
+
+    //   return rolldownPluginInstance.load(id, true);
+    // },
+
+    // transform(code, id) {
+    //   if (id.includes('node_modules/.vite/deps/')) return;
+    //   if (
+    //     id.startsWith('/muse-assets/') ||
+    //     id.startsWith('/@') ||
+    //     id.includes('node_modules/vite/dist')
+    //   ) {
+    //     return;
+    //   }
+    //   return rolldownPluginInstance.transform(code, id);
+    // },
   };
 
-  // Special support for Vitest:
-  // It needs to transform JSX to JS from Muse library plugins.
-  // To be backward compatible, all React compoennts file extension is `.js` rather than `.jsx`
-  // So we need to treat all js files as jsx files
-  if (process.env.VITEST) {
-    const libPlugins = devUtils.getMuseLibs();
-    vitePlugin.transform = async (code, id) => {
-      if (
-        libPlugins.some((p) => id.startsWith(`${p.path}/src/`)) &&
-        (id.endsWith('.js') || id.endsWith('.jsx') || id.endsWith('.ts') || id.endsWith('.tsx'))
-      ) {
-        return transformWithOxc(code, id, {
-          loader: 'jsx',
-          jsx: 'automatic',
-        });
-      }
-    };
-  }
-  return vitePlugin;
+  return [vitePlugin, rolldownPluginInstance];
 }

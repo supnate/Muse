@@ -12,6 +12,7 @@ export function load(plugin, callback) {
     return new Promise((resolve, reject) => {
       const head = document.querySelector('head');
       const script = document.createElement('script');
+      script.setAttribute('crossorigin', 'anonymous');
       // script.crossOrigin = 'anonymous';
       script.src = plugin.url;
       if (plugin.esModule) script.type = 'module';

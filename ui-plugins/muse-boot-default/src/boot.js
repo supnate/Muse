@@ -229,7 +229,7 @@ async function start() {
   const libPluginsToLoad = pluginsToLoad.filter((p) => p.type === 'lib');
   loading.showMessage(`Loading lib plugins 1/${libPluginsToLoad.length}...`);
   await loadInParallel(
-    libPluginsToLoad.filter((p) => !p.esModule),
+    libPluginsToLoad.filter((p) => 1 || !p.esModule),
     (loadedCount) =>
       loading.showMessage(
         `Loading lib plugins ${Math.min(loadedCount + 1, libPluginsToLoad.length)}/${

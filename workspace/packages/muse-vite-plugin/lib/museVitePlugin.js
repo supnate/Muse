@@ -107,10 +107,10 @@ export default function museVitePlugin() {
               key: fs.readFileSync(sslKeyFile),
             },
         },
-        plugins: [rolldownPluginInstance],
+        // plugins: [rolldownPluginInstance],
         optimizeDeps: {
           needsInterop: [],
-          force: true,
+          force: false,
           rolldownOptions: {
             plugins: [rolldownPluginInstance],
           },
@@ -178,6 +178,16 @@ export default function museVitePlugin() {
 
     //   return rolldownPluginInstance.load(id, true);
     // },
+    // load(id) {
+    //   if (id.includes('src/index')) console.log('vite load', id);
+    // },
+    handleHotUpdate({ file, server }) {
+      // for entry file, no HMR but full reload
+      if (file.endsWith('src/index.jsx')) {
+        server.ws.send({ type: 'full-reload' });
+        return [];
+      }
+    },
 
     // transform(code, id) {
     //   if (id.includes('node_modules/.vite/deps/')) return;

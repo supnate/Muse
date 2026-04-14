@@ -22,6 +22,7 @@ const buildDir = {
   'e2e-test': 'build/test',
 };
 export default function museVitePlugin() {
+  const entryFile = devUtils.getEntryFile();
   let theViteServer;
   // Shared rolldown plugin instance used by both the dev server load hook and the build pipeline.
   // const devServerRolldownPlugin = museRolldownPlugin();
@@ -32,13 +33,12 @@ export default function museVitePlugin() {
         processMuseGlobal: (museGlobal) => {
           const pluginForDev = museGlobal.plugins.find((p) => p.dev);
           if (!pluginForDev) throw new Error(`Can't find dev plugin.`);
-          const entry = devUtils.getEntryFile();
-          if (!entry)
+          if (!entryFile)
             throw new Error(
               'No entry found. There should be src/[index|main].[js|ts|jsx|tsx] file as entry.',
             );
 
-          Object.assign(pluginForDev, { esModule: true, url: '/' + entry });
+          Object.assign(pluginForDev, { esModule: true, url: '/' + entryFile });
         },
         processIndexHtml: async (ctx) => {
           // This is to get the vite server to transform the index.html
@@ -183,7 +183,8 @@ export default function museVitePlugin() {
     // },
     handleHotUpdate({ file, server }) {
       // for entry file, no HMR but full reload
-      if (file.endsWith('src/index.jsx')) {
+
+      if (file === path.join(process.cwd(), entryFile)) {
         server.ws.send({ type: 'full-reload' });
         return [];
       }

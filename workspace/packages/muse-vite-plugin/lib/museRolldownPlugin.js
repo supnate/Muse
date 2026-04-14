@@ -60,11 +60,6 @@ function museRolldownPlugin() {
     load(id) {
       if (process.env.VITEST) return;
 
-      // console.log('rolldown load', id);
-      // if (id.includes('sub-app/C2SProxyFailed.jsx')) {
-      // console.log(this.environment.moduleGraph);
-      // }
-      // console.log('rolldown load', id);
       // load the virtual module that serves as the registration point for a Muse shared module
       const prefix = '\0' + MUSE_VIRTUAL_PREFIX;
       if (id.startsWith(prefix)) {
@@ -75,12 +70,12 @@ function museRolldownPlugin() {
           return;
         }
         sharedModules[mid] = moduleId;
-        return `import (${JSON.stringify(
-          moduleId,
-        )}).then(m => MUSE_GLOBAL.__shared__.register({${JSON.stringify(mid)}:m}, () => m));`;
-        // return `import * as m from ${JSON.stringify(
+        // return `import (${JSON.stringify(
         //   moduleId,
-        // )};\nMUSE_GLOBAL.__shared__.register({${JSON.stringify(mid)}:m}, () => m);`;
+        // )}).then(m => MUSE_GLOBAL.__shared__.register({${JSON.stringify(mid)}:m}, () => m));`;
+        return `import * as m from ${JSON.stringify(
+          moduleId,
+        )};\nMUSE_GLOBAL.__shared__.register({${JSON.stringify(mid)}:m}, () => m);`;
       } else {
         // For normal modules, we check if it's a shared module and return the corresponding code to load it
         // from Muse global shared module registry.

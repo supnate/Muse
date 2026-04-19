@@ -1,7 +1,55 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { getMuseIdByPath, getMuseModuleCode, getMuseModule, getLibNameByModule } from './utils.js';
+import { parseAst } from 'vite';
+import _ from 'lodash';
+import {
+  getMuseIdByPath,
+  getMuseModuleCode,
+  getMuseModule,
+  getLibNameByModule,
+  isSharedMuseModule,
+} from './utils.js';
 import devUtils from '@ebay/muse-dev-utils/lib/utils.js';
+
+// This helper is only used if a module has ExportAllDeclaration.
+// Otherwise it gets exports meta directly from module info.
+async function resolveExports(id, pluginContext) {
+  // TODO?: improve performance.
+  // The difficulty is: in a.js: export * from './b.js'; then if b.js is changed, result of a.js is also changed
+  // So we can't cache the result by module id nor code.
+  const info = pluginContext.getModuleInfo(id);
+  if (!info?.code) return [];
+
+  const ast = parseAst(info.code);
+  const names = new Set();
+
+  for (const node of ast.body) {
+    if (node.type === 'ExportNamedDeclaration') {
+      if (node.source) {
+        // e.g. export { default as foo } from './bar' — recurse and also get the exported name
+        node.specifiers.forEach((s) => names.add(s.exported.name));
+      } else {
+        // e.g. export { foo, bar }; export { foo } — just get the exported names
+        node.specifiers?.forEach((s) => names.add(s.exported.name));
+
+        // e.g. export const foo = 1; export function bar() {}; export class Baz {};
+        node.declaration?.declarations?.forEach((d) => names.add(d.id.name));
+        if (node.declaration?.id) names.add(node.declaration.id.name);
+      }
+    }
+    if (node.type === 'ExportAllDeclaration' && node.source) {
+      // e.g. export * from './bar' — recurse
+      const subId = (await pluginContext.resolve(node.source.value, id)).id; //info.importedIds.find((i) => i.includes(node.source.value));
+      const sub = await resolveExports(subId, pluginContext);
+      sub.forEach((e) => names.add(e));
+    }
+    if (node.type === 'ExportDefaultDeclaration') {
+      names.add('default');
+    }
+  }
+
+  return [...names];
+}
 
 function museRolldownPlugin() {
   const pkgJson = devUtils.getPkgJson();
@@ -13,15 +61,44 @@ function museRolldownPlugin() {
 
   let viteConfig;
 
-  const getLibManifest = (pluginContext) => {
+  const getLibManifest = async (pluginContext) => {
     const libManifestContent = {};
+    if (viteConfig.command === 'serve') {
+      // In serve mode, we can not collect shared module by "load" hook because of vite's pre-bundling,
+      // so we need to merge the pre-generated lib manifest during deps optimization phase.
+      const preBundleLibManifestPath = path.join(
+        process.cwd(),
+        'node_modules/.muse/dev/lib-manifest-pre-bundle.json',
+      );
+      if (fs.existsSync(preBundleLibManifestPath)) {
+        const preBundleLibManifest = fs.readJsonSync(preBundleLibManifestPath);
+        Object.assign(libManifestContent, preBundleLibManifest.content || {});
+      }
+    }
+
     for (const [mid, id] of Object.entries(sharedModules)) {
+      if (libManifestContent[mid]?.exports) continue;
       // exports seems not used
       const info = pluginContext.getModuleInfo?.(id);
-      const exports =
-        Array.isArray(info?.exports) && info.exports.length > 0 ? info.exports : undefined;
 
-      libManifestContent[mid] = { id: mid, exports };
+      let exports = [];
+      try {
+        exports = info?.exports || [];
+      } catch (e) {
+        console.log('error getting exports for module', id, info);
+      }
+      if (exports?.includes('*')) {
+        // This means the module re-exports everything from another module, we need to resolve it to get the real export names.
+        exports = await resolveExports(id, pluginContext);
+      }
+
+      if (id.includes('src/utils.js')) {
+        console.log(id);
+        console.log(info);
+        console.log('module info for utils', id, info, exports);
+      }
+
+      libManifestContent[mid] = { id: mid, exports: exports?.filter((name) => name !== '*') };
     }
 
     return {
@@ -32,90 +109,185 @@ function museRolldownPlugin() {
     };
   };
 
-  const checkAndGenerateDevTimeLibManifest = (pluginContext) => {
+  const checkAndGenerateDevTimeLibManifest = _.debounce(async (pluginContext, filePath) => {
     if (isLibPlugin && viteConfig?.command === 'serve') {
-      const libManifest = getLibManifest(pluginContext);
-      fs.writeFileSync(
-        path.join(process.cwd(), 'node_modules/.muse/dev/lib-manifest.json'),
+      const libManifest = await getLibManifest(pluginContext);
+      fs.outputFileSync(
+        filePath || path.join(process.cwd(), 'node_modules/.muse/dev/lib-manifest.json'),
         JSON.stringify(libManifest, null, 2),
       );
       console.log(`Generated lib-manifest.json for serve mode.`);
     }
-  };
+  }, 30);
 
   return {
     name: 'rolldown-plugin-muse',
     enforce: 'post',
+    // codeSplitting: false,
+    // output: {
+    //   codeSplitting: false,
+    // },
     configResolved(resolvedConfig) {
       viteConfig = resolvedConfig;
     },
     resolveId(id) {
-      if (id.startsWith(MUSE_VIRTUAL_PREFIX)) {
-        // Tell Rolldown it's a virtual module so that it won't try to resolve it on the filesystem.
-        // Virtual module is always es module in which it may load assets like '.png'.
-        // So, always use .mjs extension to prevent it being transformed by other plugins like vite-css
-        return '\0' + id + '.mjs';
+      if (id.startsWith('/@muse-virtual-entry/')) {
+        return '\0' + id;
       }
+
+      if (id.startsWith('/@muse-shared-modules.js')) {
+        return '\0' + id;
+      }
+      // if (id.startsWith(MUSE_VIRTUAL_PREFIX)) {
+      //   // Tell Rolldown it's a virtual module so that it won't try to resolve it on the filesystem.
+      //   // Virtual module is always es module in which it may load assets like '.png'.
+      //   // So, always use .mjs extension to prevent it being transformed by other plugins like vite-css
+      //   return '\0' + id + '.mjs';
+      // }
     },
     load(id) {
       if (process.env.VITEST) return;
-
       // load the virtual module that serves as the registration point for a Muse shared module
-      const prefix = '\0' + MUSE_VIRTUAL_PREFIX;
-      if (id.startsWith(prefix)) {
-        const moduleId = decodeURIComponent(id.slice(prefix.length).replace(/\.mjs$/, ''));
-        const mid = getMuseIdByPath(moduleId);
-        if (!mid) {
-          console.log('no mid for ', id);
-          return;
-        }
-        sharedModules[mid] = moduleId;
-        // return `import (${JSON.stringify(
-        //   moduleId,
-        // )}).then(m => MUSE_GLOBAL.__shared__.register({${JSON.stringify(mid)}:m}, () => m));`;
-        return `import * as m from ${JSON.stringify(
-          moduleId,
-        )};\nMUSE_GLOBAL.__shared__.register({${JSON.stringify(mid)}:m}, () => m);`;
-      } else {
-        // For normal modules, we check if it's a shared module and return the corresponding code to load it
-        // from Muse global shared module registry.
 
-        const museModule = getMuseModule(id);
-        if (!museModule) return;
-        usedSharedModules[museModule.id] = true;
-        const museCode = getMuseModuleCode(museModule);
-        return museCode;
+      if (id.startsWith('\0/@muse-virtual-entry/')) {
+        console.log(id);
+        const entryFile = id.replace('\0/@muse-virtual-entry/', '/');
+        return `
+        import ${JSON.stringify(entryFile)};
+        import '/@muse-shared-modules.js';
+        console.log('abc');
+        `;
       }
+
+      if (id.startsWith('\0/@muse-shared-modules.js')) {
+        return `console.log('Registering Muse shared modules...');`;
+      }
+
+      // const prefix = '\0' + MUSE_VIRTUAL_PREFIX;
+      // if (id.startsWith(prefix)) {
+      //   const moduleId = decodeURIComponent(id.slice(prefix.length).replace(/\.mjs$/, ''));
+      //   if (moduleId.includes('a.json')) {
+      //     console.log('loading a.json', moduleId);
+      //   }
+      //   const mid = getMuseIdByPath(moduleId);
+      //   if (!mid) {
+      //     console.log('no mid for ', id);
+      //     return;
+      //   }
+
+      //   // prevent duplicate registration for the same module
+      //   sharedModules[mid] = moduleId;
+      //   console.log('vite command', viteConfig.command);
+      //   if (viteConfig.command === 'serve') {
+      //     return `import(${JSON.stringify(
+      //       moduleId,
+      //     )}).then(m => {console.log(1);\nMUSE_GLOBAL.__shared__.register({${JSON.stringify(
+      //       mid,
+      //     )}:m}, () => m);})`;
+      //   } else {
+      //     return `import * as m from ${JSON.stringify(
+      //       moduleId,
+      //     )};\nsetTimeout(()=>MUSE_GLOBAL.__shared__.register({${JSON.stringify(
+      //       mid,
+      //     )}:m}, () => m), 2000);`;
+      //   }
+      // } else {
+      //   // check if it's a shared module and return the corresponding code to load it
+      //   // from Muse global shared module registry.
+      //   const museModule = getMuseModule(id);
+      //   if (!museModule) return;
+      //   usedSharedModules[museModule.id] = true; // this is to generate deps manifest
+      //   const museCode = getMuseModuleCode(museModule);
+      //   return museCode;
+      // }
     },
 
-    transform(code, id) {
+    transform2(code, id) {
       if (
         !isLibPlugin ||
         id.startsWith('\0') ||
         id.startsWith('/muse-assets/') ||
         id.startsWith('/@') ||
         id.includes('node_modules/.vite/deps/') ||
-        id.includes('node_modules/vite/dist')
+        id.includes('node_modules/vite/dist') ||
+        // if the module is already a shared module, no need to register it as a shared module again
+        isSharedMuseModule(id)
       ) {
         return;
       }
 
-      const virtualId = MUSE_VIRTUAL_PREFIX + encodeURIComponent(id);
-      // console.log('transform', id);
-      return { code: code + `\nimport ${JSON.stringify(virtualId)};`, map: null };
-    },
-
-    generateBundle(options, bundle) {
-      checkAndGenerateDevTimeLibManifest(this);
-      if (viteConfig.command === 'serve') {
-        // Skip generateBundle for deps manifest in serve mode
+      if (viteConfig.command === 'serve' && (id.endsWith('.json') || id.endsWith('.json5'))) {
+        // We don't share json asset at dev time since it's a bit complicated
+        // But for build time, json used in a lib plugin are shared
         return;
       }
-      console.log();
 
+      setTimeout(() => {
+        checkAndGenerateDevTimeLibManifest(this);
+      }, 0);
+      const virtualId = MUSE_VIRTUAL_PREFIX + encodeURIComponent(id);
+      // // Special support for json: manually normalizeResolvedIdToUrl
+      // // The special charaters '/@id/__x00__' is from <vite-repo>/packages/vite/src/shared/constants.ts used in wrapId function
+      // // This should only be called at dev time
+      // if (
+      //   viteConfig.command === 'serve' &&
+      //   (virtualId.endsWith('.json') || virtualId.endsWith('.json5'))
+      // ) {
+      //   console.log('in serve mode for json file', id);
+      //   virtualId = '/@id/__x00__' + virtualId + '.mjs';
+      // }
+
+      if (id.includes('react-redux/es/index.js')) {
+        console.log('transforming react-redux', id);
+        // console.log(code);
+      }
+
+      const mid = getMuseIdByPath(id);
+
+      sharedModules[mid] = id;
+
+      // Use dynamic import to avoid circular dependency issue since it loads itself
+      const codeForShare = `
+        import(${JSON.stringify(id)}).then(m => {
+          MUSE_GLOBAL.__shared__.register({${JSON.stringify(mid)}: m}, () => m);
+        });
+      `;
+      //   const codeForShare = `
+      //   const __muse_shared = await import(${JSON.stringify(id)});
+      //   MUSE_GLOBAL.__shared__.register({${JSON.stringify(mid)}: __muse_shared}, () => __muse_shared);
+      // `;
+      return {
+        code: code + codeForShare,
+        map: null,
+      };
+      // return {
+      //   code:
+      //     code +
+      //     `\nimport * as mmmm from ${JSON.stringify(id)};\n
+      //     MUSE_GLOBAL.__regSharingCallback(() => MUSE_GLOBAL.__shared__.register({${JSON.stringify(
+      //       mid,
+      //     )}: mmmm}, () => mmmm));
+      //     `,
+      //   map: null,
+      // };
+      // return {
+      //   code: code + `\nimport ${JSON.stringify(virtualId)};`,
+      //   map: null,
+      // };
+    },
+
+    async generateBundle(options, bundle) {
+      console.log();
+      if (viteConfig.command === 'serve') {
+        await checkAndGenerateDevTimeLibManifest(
+          this,
+          path.join(process.cwd(), 'node_modules/.muse/dev/lib-manifest-pre-bundle.json'),
+        );
+        return;
+      }
       // Generate lib-manifest.json for lib plugins
       if (isLibPlugin) {
-        const libManifest = getLibManifest(this);
+        const libManifest = await getLibManifest(this);
         this.emitFile({
           type: 'asset',
           fileName: 'lib-manifest.json',

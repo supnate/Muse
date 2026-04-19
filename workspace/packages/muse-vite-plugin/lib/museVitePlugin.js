@@ -38,7 +38,10 @@ export default function museVitePlugin() {
               'No entry found. There should be src/[index|main].[js|ts|jsx|tsx] file as entry.',
             );
 
-          Object.assign(pluginForDev, { esModule: true, url: '/' + entryFile });
+          Object.assign(pluginForDev, {
+            esModule: true,
+            url: '/@muse-virtual-entry/' + entryFile,
+          });
         },
         processIndexHtml: async (ctx) => {
           // This is to get the vite server to transform the index.html
@@ -55,7 +58,7 @@ export default function museVitePlugin() {
     process.env.SSL_KEY_FILE ||
     path.join(process.cwd(), './node_modules/.muse/certs/muse-dev-cert.key');
 
-  const rolldownPluginInstance = museRolldownPlugin();
+  const rolldownPluginInstance = museRolldownPlugin({});
   const vitePlugin = {
     name: 'muse-vite-plugin',
     config(config, { command, mode }) {
@@ -99,6 +102,9 @@ export default function museVitePlugin() {
           origin: port ? `${isHTTPS ? 'https' : 'http'}://${host}:${port}` : undefined,
           port,
           cors: true,
+          // output: {
+          //   codeSplitting: false,
+          // },
           strictPort: !!port,
           https: process.env.HTTPS === 'true' &&
             fs.existsSync(sslCrtFile) &&
@@ -110,8 +116,10 @@ export default function museVitePlugin() {
         // plugins: [rolldownPluginInstance],
         optimizeDeps: {
           needsInterop: [],
-          force: false,
+          force: true,
           rolldownOptions: {
+            // codeSplitting: false,
+            // inlineDynamicImports: true,
             plugins: [rolldownPluginInstance],
           },
         },
@@ -125,6 +133,7 @@ export default function museVitePlugin() {
             output: {
               entryFileNames: pkgJson.muse.type === 'boot' ? 'boot.js' : 'main.js',
               format: 'es',
+              codeSplitting: false,
             },
             // plugins: [rolldownPluginInstance],
           },
@@ -183,7 +192,7 @@ export default function museVitePlugin() {
     // },
     handleHotUpdate({ file, server }) {
       // for entry file, no HMR but full reload
-
+      // This is IMPORTANT for Muse plugin
       if (file === path.join(process.cwd(), entryFile)) {
         server.ws.send({ type: 'full-reload' });
         return [];

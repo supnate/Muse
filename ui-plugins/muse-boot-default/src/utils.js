@@ -44,6 +44,15 @@ export async function loadInParallel(items, callback = noop) {
   );
 }
 
+export async function loadInSerial(items, callback = noop) {
+  let count = 0;
+  for (const item of items) {
+    await load(item);
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // This is to ensure the UI gets a chance to update between plugin loads.
+    callback(++count);
+  }
+}
+
 export function joinPath(p1, p2) {
   if (!p1.endsWith('/')) p1 += '/';
   if (p2.startsWith('/')) p2 = p2.replace(/^\/+/, '');

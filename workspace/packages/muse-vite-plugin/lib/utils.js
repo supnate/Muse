@@ -2,7 +2,6 @@ import fs from 'fs-extra';
 import path from 'path';
 import { getMuseLibs } from '@ebay/muse-dev-utils/lib/utils.js';
 import museModules from '@ebay/muse-modules';
-// import { walk } from 'estree-walker';
 
 const { findMuseModule, config } = museModules;
 config.matchVersion = 'major';
@@ -102,8 +101,14 @@ export function getMuseModule(filePath) {
       filePath.endsWith('.ts') ||
       filePath.endsWith('.tsx');
   }
-
+  if (museModule?.id.includes('src/utils.js')) {
+    console.log('museModule', museModule);
+  }
   return museModule;
+}
+
+export function isSharedMuseModule(filePath) {
+  return !!getMuseModule(filePath);
 }
 
 export function getMuseModuleCode(museModule, esm) {
@@ -124,9 +129,9 @@ export function getMuseModuleCode(museModule, esm) {
   }
   // We need to know if a module is a default export or not
   else if (museModule.exports?.includes('default') && museModule.exports?.length === 1) {
-    return `const m = MUSE_GLOBAL.__shared__.require("${museModule.id}");\nmodule.exports = m.default;`;
+    return `const m = MUSE_GLOBAL.__shared__.require("${museModule.id}");\nconsole.log(m);\nmodule.exports = m.default;`;
   } else {
-    return `const m = MUSE_GLOBAL.__shared__.require("${museModule.id}");\nmodule.exports = m;`;
+    return `const m = MUSE_GLOBAL.__shared__.require("${museModule.id}");\nconsole.log(m);\n\nmodule.exports = m;`;
   }
 }
 
@@ -220,71 +225,3 @@ export function getMuseIdByPath(p) {
     return null;
   }
 }
-
-// export function getDetailedExports(ast) {
-//   const exports = {
-//     default: null,
-//     named: [],
-//     reexports: [],
-//   };
-
-//   walk(ast, {
-//     enter(node) {
-//       if (node.type === 'ExportDefaultDeclaration') {
-//         exports.default = {
-//           type: 'default',
-//           // Try to get name if it's a named declaration
-//           name: node.declaration.id?.name || null,
-//         };
-//       }
-
-//       if (node.type === 'ExportNamedDeclaration') {
-//         if (node.source) {
-//           // Re-export from another module
-//           exports.reexports.push({
-//             from: node.source.value,
-//             exports: node.specifiers.map((s) => ({
-//               local: s.local.name,
-//               exported: s.exported.name,
-//             })),
-//           });
-//         } else {
-//           // Direct export
-//           if (node.specifiers.length > 0) {
-//             node.specifiers.forEach((spec) => {
-//               exports.named.push({
-//                 name: spec.exported.name,
-//                 local: spec.local.name,
-//               });
-//             });
-//           }
-
-//           if (node.declaration) {
-//             if (node.declaration.type === 'VariableDeclaration') {
-//               node.declaration.declarations.forEach((decl) => {
-//                 exports.named.push({
-//                   name: decl.id.name,
-//                   type: 'variable',
-//                 });
-//               });
-//             } else if (node.declaration.id) {
-//               exports.named.push({
-//                 name: node.declaration.id.name,
-//                 type: node.declaration.type === 'FunctionDeclaration' ? 'function' : 'class',
-//               });
-//             }
-//           }
-//         }
-//       }
-
-//       if (node.type === 'ExportAllDeclaration') {
-//         exports.reexports.push({
-//           from: node.source.value,
-//           all: true,
-//         });
-//       }
-//     },
-//   });
-
-//   return exports;
-// }

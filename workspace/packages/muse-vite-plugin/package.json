@@ -14,7 +14,8 @@
     "@ebay/muse-core": "workspace:^",
     "@ebay/muse-dev-utils": "workspace:^",
     "@ebay/muse-modules": "workspace:^",
-    "fs-extra": "^10.1.0"
+    "fs-extra": "^10.1.0",
+    "lodash": "^4.17.21"
   },
   "devDependencies": {
     "@eslint/js": "^9.1.1",

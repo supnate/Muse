@@ -2,7 +2,7 @@ import museModules from '@ebay/muse-modules';
 import loading from './loading';
 import error from './error';
 import registerSw from './registerSw';
-import { loadInParallel, getPluginId } from './utils';
+import { loadInParallel, loadInSerial, getPluginId } from './utils';
 import msgEngine from './msgEngine';
 import './urlListener';
 import './style.css';
@@ -19,6 +19,13 @@ async function start() {
   }
 
   const mg = window.MUSE_GLOBAL;
+
+  const toShare = [];
+  mg.__regSharingCallback = (func) => toShare.push(func);
+  mg.__applyShared = () => {
+    toShare.forEach((item) => item());
+    toShare.length = 0;
+  };
   loading.showMessage('Starting...');
   const waitForLoaders = mg.waitForLoaders || [];
 
@@ -228,7 +235,7 @@ async function start() {
   // Load plugin bundles
   const libPluginsToLoad = pluginsToLoad.filter((p) => p.type === 'lib');
   loading.showMessage(`Loading lib plugins 1/${libPluginsToLoad.length}...`);
-  await loadInParallel(
+  await loadInSerial(
     libPluginsToLoad.filter((p) => 1 || !p.esModule),
     (loadedCount) =>
       loading.showMessage(

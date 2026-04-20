@@ -22,7 +22,7 @@ const buildDir = {
   'e2e-test': 'build/test',
 };
 export default function museVitePlugin() {
-  const entryFile = devUtils.getEntryFile();
+  const entryFile = '/@muse-virtual-entry/' + devUtils.getEntryFile();
   let theViteServer;
   // Shared rolldown plugin instance used by both the dev server load hook and the build pipeline.
   // const devServerRolldownPlugin = museRolldownPlugin();
@@ -40,7 +40,7 @@ export default function museVitePlugin() {
 
           Object.assign(pluginForDev, {
             esModule: true,
-            url: '/@muse-virtual-entry/' + entryFile,
+            url: entryFile,
           });
         },
         processIndexHtml: async (ctx) => {
@@ -66,7 +66,7 @@ export default function museVitePlugin() {
       const port = process.env.PORT;
       const host = config.server?.host || process.env.MUSE_LOCAL_HOST_NAME || 'localhost';
       const pkgJson = devUtils.getPkgJson();
-      const entryFile = devUtils.getEntryFile();
+      // const entryFile = devUtils.getEntryFile();
 
       setViteMode(mode || 'production');
 
@@ -115,9 +115,13 @@ export default function museVitePlugin() {
         },
         // plugins: [rolldownPluginInstance],
         optimizeDeps: {
+          disabled: true,
           needsInterop: [],
+          noDiscovery: true,
+          include: [],
           force: true,
           rolldownOptions: {
+            input: entryFile,
             // codeSplitting: false,
             // inlineDynamicImports: true,
             plugins: [rolldownPluginInstance],

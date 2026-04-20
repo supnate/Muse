@@ -135,7 +135,7 @@ function museRolldownPlugin() {
         return '\0' + id;
       }
 
-      if (id.startsWith('/@muse-shared-modules.js')) {
+      if (id.startsWith('/@muse-shared-modules.mjs')) {
         return '\0' + id;
       }
       // if (id.startsWith(MUSE_VIRTUAL_PREFIX)) {
@@ -154,14 +154,67 @@ function museRolldownPlugin() {
         const entryFile = id.replace('\0/@muse-virtual-entry/', '/');
         return `
         import ${JSON.stringify(entryFile)};
-        import '/@muse-shared-modules.js';
-        console.log('abc');
+        import '/@muse-shared-modules.mjs';
+        console.log('virtual entry loaded');
         `;
       }
 
-      if (id.startsWith('\0/@muse-shared-modules.js')) {
-        return `console.log('Registering Muse shared modules...');`;
+      if (id.startsWith('\0/@muse-shared-modules.mjs')) {
+        // return `
+        //     ${Object.entries(sharedModules)
+        //       .map(([mid, id], index) => {
+        //         const varName = `m_${index}`;
+        //         return `
+        //           console.log('importing shared module', ${JSON.stringify(id)});
+        //         `;
+        //       })
+        //       .join('\n')}
+
+        //     console.log('Registering Muse shared modules...');
+        // `;
+
+        return `
+            ${Object.entries(sharedModules)
+              .map(([mid, id], index) => {
+                if (id.endsWith('src/index.jsx')) {
+                  console.log('endsjsx');
+                  return '';
+                }
+                const arr = id.split('node_modules/');
+                console.log(arr.length);
+                const shortId = arr.length > 1 ? '/node_modules/' + arr[arr.length - 1] : id;
+                console.log(shortId);
+
+                const varName = `m_${index}`;
+                return `
+                            import * as ${varName} from ${JSON.stringify(shortId)};
+                            MUSE_GLOBAL.__shared__.register({${JSON.stringify(
+                              mid,
+                            )}: ${varName}}, () => ${varName});
+                          `;
+              })
+              .join('\n')}
+
+            console.log('Registering Muse shared modules...');
+        `;
       }
+
+      // if (
+      //   !isLibPlugin ||
+      //   id.startsWith('\0') ||
+      //   id.startsWith('/muse-assets/') ||
+      //   id.startsWith('/@') ||
+      //   id.includes('node_modules/.vite/deps/') ||
+      //   id.includes('node_modules/vite/dist') ||
+      //   // if the module is already a shared module, no need to register it as a shared module again
+      //   isSharedMuseModule(id)
+      // ) {
+      //   return;
+      // }
+
+      // // if it is a lib plugin, every loaded module is a shared module
+      // const mid = getMuseIdByPath(id);
+      // sharedModules[mid] = id;
 
       // const prefix = '\0' + MUSE_VIRTUAL_PREFIX;
       // if (id.startsWith(prefix)) {
@@ -201,8 +254,52 @@ function museRolldownPlugin() {
       //   return museCode;
       // }
     },
+    moduleParsed(info) {
+      // console.log('moduleParsed', info);
+    },
+
+    transform(code, id) {
+      if (
+        !isLibPlugin ||
+        id.startsWith('\0') ||
+        id.startsWith('/muse-assets/') ||
+        id.startsWith('/@') ||
+        id.includes('node_modules/.vite/deps/') ||
+        id.includes('node_modules/vite/dist') ||
+        // if the module is already a shared module, no need to register it as a shared module again
+        isSharedMuseModule(id)
+      ) {
+        return;
+      }
+      // console.log('transform', id);
+      // if it is a lib plugin, every loaded module is a shared module
+      const mid = getMuseIdByPath(id);
+      sharedModules[mid] = id.replace(/\?v=.*/, ''); // remove vite's query string for cache busting, since it doesn't affect module content but would cause issues for shared module matching
+    },
 
     transform2(code, id) {
+      // if (id.startsWith('\0/@muse-shared-modules.mjs')) {
+      //   return {
+      //     code: `
+      //       ${Object.entries(sharedModules)
+      //         .map(([mid, id], index) => {
+      //           const varName = `m_${index}`;
+      //           return `
+      //           import * as ${varName} from ${JSON.stringify(id)};
+      //           MUSE_GLOBAL.__shared__.register({${JSON.stringify(
+      //             mid,
+      //           )}: ${varName}}, () => ${varName});
+      //         `;
+      //         })
+      //         .join('\n')}
+
+      //       console.log('Registering Muse shared modules...');
+      //     `,
+      //     map: null,
+      //   };
+      // }
+
+      // return;
       if (
         !isLibPlugin ||
         id.startsWith('\0') ||
